@@ -355,6 +355,32 @@ end, {
   end,
 })
 
+local invalidate_cache = true
+local create_timer = function()
+  local t = vim.loop.new_timer()
+  t:start(20, 30, function()
+    invalidate_cache = true
+  end)
+  return t
+end
+
+local timer = nil
+vim.api.nvim_create_autocmd('InsertEnter', {
+  callback = function()
+    timer = create_timer()
+  end,
+})
+vim.api.nvim_create_autocmd('InsertLeave', {
+  callback = function()
+    if timer then
+      timer:stop()
+      timer:close()
+      timer = nil
+    end
+    invalidate_cache = true
+  end,
+})
+local cache = {}
 local function apply(namespace, bufnr, line_index)
   bufnr = bufnr or 0
   local root = get_tree(bufnr)
@@ -362,7 +388,29 @@ local function apply(namespace, bufnr, line_index)
     return
   end
 
-  local result = get_matches(bufnr, line_index, root)
+  local key = bufnr .. '-' .. line_index
+  local cached_value = cache[key]
+  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local result
+  if cached_value then
+    result = cached_value.data
+    if invalidate_cache and cached_value.tick ~= tick then
+      cached_value = nil
+    end
+
+    if invalidate_cache and timer ~= nil then
+      invalidate_cache = false
+    end
+  end
+
+  if not cached_value then
+    result = get_matches(bufnr, line_index, root)
+    cache[key] = {
+      data = result,
+      tick = tick,
+    }
+  end
+
   local hide_markers = config.org_hide_emphasis_markers
 
   for _, range in ipairs(result.ranges) do
