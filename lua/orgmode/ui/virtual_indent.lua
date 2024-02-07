@@ -123,23 +123,28 @@ end
 --- Enables virtual indentation in registered buffer
 function VirtualIndent:attach()
   self._attached = true
-  self:set_indent(0, vim.api.nvim_buf_line_count(self._bufnr) - 1, true)
   self:start_watch_org_indent()
 
-  vim.api.nvim_buf_attach(self._bufnr, false, {
-    on_lines = function(_, _, _, start_line, _, end_line)
-      if not self._attached then
-        return true
-      end
-      -- HACK: By calling `set_indent` twice, once synchronously and once in `vim.schedule` we get smooth usage of the
-      -- virtual indent in most cases and still properly handle undo redo. Unfortunately this is called *early* when
-      -- `undo` or `redo` is used causing the padding to be incorrect for some headlines.
-      self:set_indent(start_line, end_line)
-      vim.schedule(function()
+  -- HACK: By adding a delay for setting the indent this works as anticipated. I have not yet
+  -- determined *why* there seems to be a race condition of sorts on this.
+  -- TODO: Investigate and remove the above hack/`defer_fn` below.
+  vim.defer_fn(function()
+    self:set_indent(0, vim.api.nvim_buf_line_count(self._bufnr) - 1, true)
+    vim.api.nvim_buf_attach(self._bufnr, false, {
+      on_lines = function(_, _, _, start_line, _, end_line)
+        if not self._attached then
+          return true
+        end
+        -- HACK: By calling `set_indent` twice, once synchronously and once in `vim.schedule` we get smooth usage of the
+        -- virtual indent in most cases and still properly handle undo redo. Unfortunately this is called *early* when
+        -- `undo` or `redo` is used causing the padding to be incorrect for some headlines.
         self:set_indent(start_line, end_line)
-      end)
-    end,
-  })
+        vim.schedule(function()
+          self:set_indent(start_line, end_line)
+        end)
+      end,
+    })
+  end, 300)
 end
 
 function VirtualIndent:detach()
