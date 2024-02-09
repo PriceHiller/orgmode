@@ -128,10 +128,9 @@ function VirtualIndent:attach()
       if not self._attached then
         return true
       end
-      -- HACK: By calling `set_indent` twice, once synchronously and once in `vim.schedule` we get smooth usage of the
-      -- virtual indent in most cases and still properly handle undo redo. Unfortunately this is called *early* when
-      -- `undo` or `redo` is used causing the padding to be incorrect for some headlines.
-      self:set_indent(start_line, end_line)
+      -- Used to avoid `textlock` restrictions and issues with treesitter. If you have a have a
+      -- unscheduled call here other plugins and treesitter parsing can go haywire under certain
+      -- conditions (like using `gq` to reformat a paragraph to `textwidth`).
       vim.schedule(function()
         self:set_indent(start_line, end_line)
       end)
